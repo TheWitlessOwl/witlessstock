@@ -30,7 +30,7 @@ const $=s=>document.querySelector(s);
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let S={products:[],imports:[],deliveries:[],buffer:10,freq:7,gstRate:10,gstInc:true,adjust:[]},tab='Dashboard',msg='';
 try{const d=localStorage.getItem('sst1');if(d)S=Object.assign(S,JSON.parse(d))}catch(e){}
-const save=()=>{try{localStorage.setItem('sst1',JSON.stringify(S))}catch(e){}};
+const save=()=>{S.updatedAt=Date.now();try{localStorage.setItem('sst1',JSON.stringify(S))}catch(e){}schedulePush()};
 const num=v=>{const n=parseFloat(String(v??'').replace(/[^0-9.\-]/g,''));return isNaN(n)?0:n};
 const $$=n=>'$'+n.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
 const key=p=>(p.code||p.name).trim().toLowerCase();
@@ -54,22 +54,21 @@ function vProducts(){const pb=pendingBC;pendingBC='';
  let rev=0,pr=0,val=0;S.products.forEach(p=>{const s=stats(p);rev+=s.rev;pr+=s.profit;val+=p.stock*p.cost});
  $('#v').innerHTML=`<div class="kpi"><div><b>${S.products.length}</b><span>Products</span></div><div><b>${$$(rev)}</b><span>Revenue (ex GST)</span></div><div><b>${$$(pr)}</b><span>Gross profit</span></div><div><b>${rev?(pr/rev*100).toFixed(1):0}%</b><span>Gross margin</span></div><div><b>${$$(val)}</b><span>Stock value at cost</span></div></div><br>
  <div class="card"><h2>Add product</h2><div class="row">
- <label>Product code<input id="c"></label><label>Product name<input id="n"></label><label>Product group<input id="pg" list="gl"></label><datalist id="gl">${[...new Set(S.products.map(p=>p.group).filter(Boolean))].map(g=>`<option value="${esc(g)}">`).join('')}</datalist><label>Barcode<input id="bc" value="${esc(pb)}"></label><button onclick="openScan(c=>{$('#bc').value=c;const i=findBC(c);$('#pm').textContent=i>=0?'Already exists: '+S.products[i].name:'Barcode captured.'})">📷 Scan</button><label>Min stock (alert level)<input id="mn" type="number" value="0"></label>
+ <label>Product code<input id="c" value="${esc(pb)}"></label><button onclick="openScan(c=>{$('#c').value=c;const i=findBC(c);$('#pm').textContent=i>=0?'Already exists: '+S.products[i].name:'Code captured from scan.'})">📷 Scan</button><label>Product name<input id="n"></label><label>Product group<input id="pg" list="gl"></label><datalist id="gl">${[...new Set(S.products.map(p=>p.group).filter(Boolean))].map(g=>`<option value="${esc(g)}">`).join('')}</datalist><label>Min stock (alert level)<input id="mn" type="number" value="0"></label>
  <label>Cost price (wholesale, ex-GST)<input id="co" type="number" step="0.01"></label>
  <label>Selling price (RRP, ${S.gstInc?'inc':'ex'} GST)<input id="pr" type="number" step="0.01"></label>
  <label>Opening stock (units)<input id="st" type="number" value="0"></label><label>GST applies<input id="g" type="checkbox" checked></label>
- <button class="p" onclick="addP()">Add</button></div><div class="mu" id="pm">${esc(pb?'Barcode '+pb+' captured. Fill in the rest and click Add.':msg)}</div></div>
- <div class="card w"><h2>Products</h2><table><tr><th>Code</th><th>Name</th><th>Group</th><th>Barcode</th><th class="n">Cost price</th><th class="n">Selling price</th><th class="n">Price ex GST</th><th>GST</th><th class="n">Gross profit/unit</th><th class="n">Gross margin</th><th class="n">Markup</th><th class="n">Units sold</th><th class="n">Gross profit</th><th class="n">Min stock</th><th class="n">On hand</th><th></th></tr>
- ${S.products.map((p,i)=>{const s=stats(p);return`<tr><td>${esc(p.code)}</td><td>${esc(p.name)}</td><td><input class="t" list="gl" value="${esc(p.group||'')}" onchange="S.products[${i}].group=this.value.trim();save();vProducts()"></td><td><input class="t" value="${esc(p.barcode||'')}" onchange="S.products[${i}].barcode=this.value.trim();save()"> <button onclick="openScan(c=>{S.products[${i}].barcode=c;save();vProducts()})">📷</button></td>
+ <button class="p" onclick="addP()">Add</button></div><div class="mu" id="pm">${esc(pb?'Code '+pb+' captured from scan. Fill in the rest and click Add.':msg)}</div></div>
+ <div class="card w"><h2>Products</h2><table><tr><th>Code</th><th>Name</th><th>Group</th><th class="n">Cost price</th><th class="n">Selling price</th><th class="n">Price ex GST</th><th>GST</th><th class="n">Gross profit/unit</th><th class="n">Gross margin</th><th class="n">Markup</th><th class="n">Units sold</th><th class="n">Gross profit</th><th class="n">Min stock</th><th class="n">On hand</th><th></th></tr>
+ ${S.products.map((p,i)=>{const s=stats(p);return`<tr><td><input style="width:100px" value="${esc(p.code)}" onchange="S.products[${i}].code=this.value.trim();save();vProducts()"> <button onclick="openScan(c=>{S.products[${i}].code=c;save();vProducts()})">📷</button></td><td>${esc(p.name)}</td><td><input class="t" list="gl" value="${esc(p.group||'')}" onchange="S.products[${i}].group=this.value.trim();save();vProducts()"></td>
  <td class="n"><input type="number" step="0.01" value="${p.cost}" onchange="upd(${i},'cost',this.value)"></td>
  <td class="n"><input type="number" step="0.01" value="${p.price}" onchange="upd(${i},'price',this.value)"></td>
  <td class="n">${$$(sellEx(p))}</td><td><input type="checkbox" ${tax(p)?'checked':''} onchange="S.products[${i}].gst=this.checked;save();vProducts()"></td><td class="n">${$$(sellEx(p)-p.cost)}</td><td class="n ${gm(p)<0?'bad':''}">${gm(p).toFixed(1)}%</td><td class="n">${mk(p).toFixed(1)}%</td>
  <td class="n">${s.q}</td><td class="n">${$$(s.profit)}</td>
- <td class="n"><input type="number" value="${p.min||0}" onchange="upd(${i},'min',this.value)"></td><td class="n ${p.stock<=0?'bad':''}">${p.stock}</td><td><button onclick="delP(${i})">✕</button></td></tr>`}).join('')||'<tr><td colspan="16" class="mu">No products yet — add one above or import a sales report.</td></tr>'}</table></div>`}
-function addP(){const code=$('#c').value.trim(),name=$('#n').value.trim(),bc=$('#bc').value.trim();if(!name&&!code){msg='Enter a name or code.';return vProducts()}
+ <td class="n"><input type="number" value="${p.min||0}" onchange="upd(${i},'min',this.value)"></td><td class="n ${p.stock<=0?'bad':''}">${p.stock}</td><td><button onclick="delP(${i})">✕</button></td></tr>`}).join('')||'<tr><td colspan="15" class="mu">No products yet — add one above or import a sales report.</td></tr>'}</table></div>`}
+function addP(){const code=$('#c').value.trim(),name=$('#n').value.trim();if(!name&&!code){msg='Enter a name or code.';return vProducts()}
  if(find(code,name)){msg='That product already exists.';return vProducts()}
- if(bc&&findBC(bc)>=0){msg='That barcode already belongs to '+S.products[findBC(bc)].name+'.';return vProducts()}
- S.products.push({code,name:name||code,cost:num($('#co').value),price:num($('#pr').value),stock:num($('#st').value),gst:$('#g').checked,group:$('#pg').value.trim(),min:num($('#mn').value),barcode:bc});save();msg='Added.';vProducts()}
+ S.products.push({code,name:name||code,cost:num($('#co').value),price:num($('#pr').value),stock:num($('#st').value),gst:$('#g').checked,group:$('#pg').value.trim(),min:num($('#mn').value)});save();msg='Added.';vProducts()}
 function upd(i,f,v){S.products[i][f]=num(v);save();vProducts()}
 function delP(i){if(confirm('Delete '+S.products[i].name+'?')){S.products.splice(i,1);save();vProducts()}}
 
@@ -230,10 +229,48 @@ function vCheck(){
  ${ckHist.length?`<div class="card w"><h2>Recently checked</h2><table><tr><th>Product</th><th class="n">On hand</th><th class="n">Cost</th><th class="n">Price</th></tr>
  ${ckHist.map(i=>{const p=S.products[i];return p?`<tr><td><a href="#" onclick="ckLast=${i};vCheck();return false">${esc(p.name)}</a></td><td class="n">${p.stock}</td><td class="n">${$$(p.cost)}</td><td class="n">${$$(p.price)}</td></tr>`:''}).join('')}</table></div>`:''}`;
  const ci=$('#ckin');if(ci)ci.focus()}
+
+let SY={apiKey:'',authDomain:'',projectId:'',uid:'',email:''};
+try{const d=localStorage.getItem('sstSync');if(d)SY=Object.assign(SY,JSON.parse(d))}catch(e){}
+let DEV=localStorage.getItem('sstDevice');if(!DEV){DEV=Math.random().toString(36).slice(2,10);localStorage.setItem('sstDevice',DEV)}
+let syncMsg='',syncBusy=false,fbReady=false,unsub=null;
+function saveSY(){localStorage.setItem('sstSync',JSON.stringify(SY))}
+async function loadFB(){if(window.firebase)return;const v='10.7.1';
+ for(const n of ['firebase-app-compat.js','firebase-auth-compat.js','firebase-firestore-compat.js']){
+  await new Promise((res,rej)=>{const s=document.createElement('script');s.src=`https://www.gstatic.com/firebasejs/${v}/${n}`;s.onload=res;s.onerror=rej;document.head.appendChild(s)})}}
+async function initFB(){if(!SY.apiKey||!SY.authDomain||!SY.projectId)return;
+ try{await loadFB();if(!fbReady){firebase.initializeApp({apiKey:SY.apiKey,authDomain:SY.authDomain,projectId:SY.projectId});fbReady=true;
+  firebase.auth().onAuthStateChanged(u=>{if(u){SY.uid=u.uid;SY.email=u.email;saveSY();listenCloud()}else{SY.uid='';SY.email='';saveSY();if(unsub){unsub();unsub=null}}if(tab=='Settings')vBackup()})}
+ }catch(e){syncMsg='Firebase setup error: '+e.message;if(tab=='Settings')vBackup()}}
+function saveConfig(){try{const cfg=new Function('return '+$('#fbcfg').value)();if(!cfg.apiKey||!cfg.authDomain||!cfg.projectId)throw 0;
+  SY.apiKey=cfg.apiKey;SY.authDomain=cfg.authDomain;SY.projectId=cfg.projectId;saveSY();syncMsg='Config saved — now click Sign in with Google.';fbReady=false;initFB()
+ }catch(e){syncMsg='Could not read that config — paste the whole { apiKey: ..., authDomain: ..., projectId: ... } object from the Firebase console.'}vBackup()}
+async function doSignIn(){if(!fbReady){syncMsg='Save the Firebase config first.';return vBackup()}
+ try{await firebase.auth().signInWithPopup(new firebase.auth.GoogleAuthProvider());syncMsg='Signed in.'}catch(e){syncMsg='Sign-in failed: '+e.message}vBackup()}
+function doSignOut(){if(fbReady)firebase.auth().signOut();syncMsg='Signed out. Data stays in the cloud for next time you sign in.';vBackup()}
+function schedulePush(){if(!SY.uid||!fbReady)return;clearTimeout(schedulePush._t);schedulePush._t=setTimeout(pushSync,1500)}
+async function pushSync(){if(!SY.uid||!fbReady)return;syncBusy=true;if(tab=='Settings')vBackup();
+ try{await firebase.firestore().collection('shops').doc(SY.uid).set({data:JSON.stringify(S),updatedAt:S.updatedAt||Date.now(),device:DEV});syncMsg='Synced '+new Date().toLocaleTimeString()}
+ catch(e){syncMsg='Sync failed: '+e.message}
+ syncBusy=false;if(tab=='Settings')vBackup()}
+function listenCloud(){if(unsub)unsub();
+ unsub=firebase.firestore().collection('shops').doc(SY.uid).onSnapshot(doc=>{
+  if(!doc.exists){pushSync();return}
+  const d=doc.data();if(d.device===DEV)return;
+  if((d.updatedAt||0)>(S.updatedAt||0)){const data=JSON.parse(d.data);S=Object.assign(S,data);S.updatedAt=d.updatedAt;
+   try{localStorage.setItem('sst1',JSON.stringify(S))}catch(e){}syncMsg='Pulled newer data from cloud, '+new Date().toLocaleTimeString();render()}
+ },e=>{syncMsg='Sync failed: '+e.message;if(tab=='Settings')vBackup()})}
+initFB();
 function vBackup(){
  $('#v').innerHTML=`<div class="card"><h2>GST</h2><div class="row"><label>GST rate %<input type="number" value="${S.gstRate}" onchange="S.gstRate=num(this.value);save();vBackup()"></label>
  <label>Sales reports &amp; selling prices are<select onchange="S.gstInc=this.value=='1';save();vBackup()"><option value="1" ${S.gstInc?'selected':''}>GST inclusive</option><option value="0" ${S.gstInc?'':'selected'}>GST exclusive</option></select></label></div>
  <p class="mu">Cost prices are always entered ex-GST. Revenue, profit and margins are calculated ex-GST. Untick GST on the Products tab for GST-free items.</p></div>
+ <div class="card"><h2>Cloud sync (Google sign-in)</h2><p class="mu">Sign in with Google on each device and your data follows your account automatically. Needs a one-time free Firebase setup — ask Claude for the step-by-step if you haven't done it yet.</p>
+ <div class="row"><label style="flex:1;min-width:260px">Firebase config (paste the object from the console)<textarea id="fbcfg" rows="3" style="width:100%;font-family:monospace;font-size:12px">${SY.apiKey?'{ apiKey: "'+SY.apiKey+'", authDomain: "'+SY.authDomain+'", projectId: "'+SY.projectId+'" }':''}</textarea></label></div>
+ <div class="row"><button onclick="saveConfig()">Save config</button></div>
+ <div class="row">${SY.uid?`<span class="ok">Signed in as ${esc(SY.email)}</span><button onclick="doSignOut()">Sign out</button>`:`<button class="p" onclick="doSignIn()">Sign in with Google</button>`}</div>
+ <p class="${syncMsg.startsWith('Sign')&&syncMsg.includes('failed')?'bad':'mu'}">${esc(syncBusy?'Syncing…':syncMsg)||''}</p>
+ <p class="mu">Note: this only connects to the cloud on the GitHub-hosted version of the app — the in-chat preview link blocks outside connections for safety.</p></div>
  <div class="card"><h2>Backup &amp; restore</h2><p class="mu">Data lives in this browser only. Download a backup regularly.</p>
  <div class="row"><button class="p" onclick="bk()">Download backup</button><label>Restore<input type="file" accept=".json" onchange="rs(this)"></label></div><div class="mu">${esc(msg)}</div></div>`}
 function bk(){const a=document.createElement('a');a.href='data:application/json,'+encodeURIComponent(JSON.stringify(S));a.download='sales-tracker-backup.json';a.click()}
