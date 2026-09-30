@@ -230,7 +230,7 @@ function vCheck(){
  ${ckHist.map(i=>{const p=S.products[i];return p?`<tr><td><a href="#" onclick="ckLast=${i};vCheck();return false">${esc(p.name)}</a></td><td class="n">${p.stock}</td><td class="n">${$$(p.cost)}</td><td class="n">${$$(p.price)}</td></tr>`:''}).join('')}</table></div>`:''}`;
  const ci=$('#ckin');if(ci)ci.focus()}
 
-let SY={apiKey:'',authDomain:'',projectId:'',uid:'',email:''};
+let SY={apiKey:'AIzaSyDuu-miUWk7Bw4MrXAwxEa223fWbVhH2cw',authDomain:'witless-stock-tracker.firebaseapp.com',projectId:'witless-stock-tracker',uid:'',email:''};
 try{const d=localStorage.getItem('sstSync');if(d)SY=Object.assign(SY,JSON.parse(d))}catch(e){}
 let DEV=localStorage.getItem('sstDevice');if(!DEV){DEV=Math.random().toString(36).slice(2,10);localStorage.setItem('sstDevice',DEV)}
 let syncMsg='',syncBusy=false,fbReady=false,unsub=null;
@@ -265,9 +265,7 @@ function vBackup(){
  $('#v').innerHTML=`<div class="card"><h2>GST</h2><div class="row"><label>GST rate %<input type="number" value="${S.gstRate}" onchange="S.gstRate=num(this.value);save();vBackup()"></label>
  <label>Sales reports &amp; selling prices are<select onchange="S.gstInc=this.value=='1';save();vBackup()"><option value="1" ${S.gstInc?'selected':''}>GST inclusive</option><option value="0" ${S.gstInc?'':'selected'}>GST exclusive</option></select></label></div>
  <p class="mu">Cost prices are always entered ex-GST. Revenue, profit and margins are calculated ex-GST. Untick GST on the Products tab for GST-free items.</p></div>
- <div class="card"><h2>Cloud sync (Google sign-in)</h2><p class="mu">Sign in with Google on each device and your data follows your account automatically. Needs a one-time free Firebase setup — ask Claude for the step-by-step if you haven't done it yet.</p>
- <div class="row"><label style="flex:1;min-width:260px">Firebase config (paste the object from the console)<textarea id="fbcfg" rows="3" style="width:100%;font-family:monospace;font-size:12px">${SY.apiKey?'{ apiKey: "'+SY.apiKey+'", authDomain: "'+SY.authDomain+'", projectId: "'+SY.projectId+'" }':''}</textarea></label></div>
- <div class="row"><button onclick="saveConfig()">Save config</button></div>
+ <div class="card"><h2>Cloud sync (Google sign-in)</h2><p class="mu">Sign in with the same Google account on each device and your data follows automatically.</p>
  <div class="row">${SY.uid?`<span class="ok">Signed in as ${esc(SY.email)}</span><button onclick="doSignOut()">Sign out</button>`:`<button class="p" onclick="doSignIn()">Sign in with Google</button>`}</div>
  <p class="${syncMsg.startsWith('Sign')&&syncMsg.includes('failed')?'bad':'mu'}">${esc(syncBusy?'Syncing…':syncMsg)||''}</p>
  <p class="mu">Note: this only connects to the cloud on the GitHub-hosted version of the app — the in-chat preview link blocks outside connections for safety.</p></div>
