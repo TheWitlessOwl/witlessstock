@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Sales & Stock Tracker</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#2f6fed">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);--bg:#f6f7f9;--card:#fff;--tx:#1c2430;--mu:#6b7686;--bd:#dfe3e9;--ac:#2f6fed;--bad:#c93c3c;--ok:#1f8a4c}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#14171c;--card:#1d222a;--tx:#e8ecf1;--mu:#93a0b1;--bd:#2d343f;--ac:#6b9bff;--bad:#ff7b7b;--ok:#5fd18c}}
+:root[data-theme="dark"]{--bg:#14171c;--card:#1d222a;--tx:#e8ecf1;--mu:#93a0b1;--bd:#2d343f;--ac:#6b9bff;--bad:#ff7b7b;--ok:#5fd18c}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--tx);font:14px system-ui,-apple-system,Segoe UI,sans-serif}
+main{max-width:1100px;margin:0 auto;padding:14px}
+h1{font-size:20px;margin:0 0 10px}h2{font-size:15px;margin:0 0 8px}
+nav{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+button,input,select{font:inherit;color:var(--tx);background:var(--card);border:1px solid var(--bd);border-radius:6px;padding:6px 9px}
+button{cursor:pointer}button.p,nav button.on{background:var(--ac);color:#fff;border-color:var(--ac)}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:12px;margin-bottom:12px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:end}.row label{display:flex;flex-direction:column;font-size:12px;color:var(--mu);gap:3px}
+.kpi{display:flex;gap:10px;flex-wrap:wrap}.kpi div{flex:1;min-width:130px;background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:10px}.kpi b{display:block;font-size:19px}.kpi span{color:var(--mu);font-size:12px}
+.w{overflow-x:auto}table{border-collapse:collapse;width:100%}th,td{padding:6px 8px;border-bottom:1px solid var(--bd);text-align:left;white-space:nowrap}th{color:var(--mu);font-size:12px}td.n,th.n{text-align:right}
+.bad{color:var(--bad);font-weight:600}.ok{color:var(--ok)}.mu{color:var(--mu)}
+td input{width:80px}td input[type=checkbox]{width:auto}nav{gap:18px}.grp small{display:block;color:var(--mu);font-size:11px;text-transform:uppercase;margin-bottom:3px}td input.t{width:170px}
+</style></head><body><main>
+<h1>Sales &amp; Stock Tracker</h1>
+<nav id="nav"></nav><div id="v"></div>
+<script>
+const $=s=>document.querySelector(s);
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let S={products:[],imports:[],deliveries:[],buffer:10,freq:7,gstRate:10,gstInc:true,adjust:[]},tab='Dashboard',msg='';
+try{const d=localStorage.getItem('sst1');if(d)S=Object.assign(S,JSON.parse(d))}catch(e){}
+const save=()=>{try{localStorage.setItem('sst1',JSON.stringify(S))}catch(e){}};
+const num=v=>{const n=parseFloat(String(v??'').replace(/[^0-9.\-]/g,''));return isNaN(n)?0:n};
+const $$=n=>'$'+n.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+const key=p=>(p.code||p.name).trim().toLowerCase();
+const find=(code,name)=>S.products.find(p=>key(p)===((code||name)||'').trim().toLowerCase());
+const tax=p=>p.gst!==false,ex=(a,p)=>tax(p)&&S.gstInc?a/(1+S.gstRate/100):a,sellEx=p=>ex(p.price,p);
+const gm=p=>{const s=sellEx(p);return s>0?(s-p.cost)/s*100:0},mk=p=>p.cost>0?(sellEx(p)-p.cost)/p.cost*100:0;
+function parseCSV(t){const r=[];let row=[],c='',q=false;for(let i=0;i<t.length;i++){const ch=t[i];
+ if(q){if(ch=='"'){if(t[i+1]=='"'){c+='"';i++}else q=false}else c+=ch}
+ else if(ch=='"')q=true;else if(ch==','){row.push(c);c=''}
+ else if(ch=='\n'||ch=='\r'){if(ch=='\r'&&t[i+1]=='\n')i++;row.push(c);c='';if(row.some(x=>x.trim()))r.push(row);row=[]}else c+=ch}
+ row.push(c);if(row.some(x=>x.trim()))r.push(row);return r}
+function stats(p){let q=0,rev=0,gst=0,days=0;S.imports.forEach(im=>{days+=im.days;im.lines.forEach(l=>{if(l.k===key(p)){q+=l.qty;const e=ex(l.total,p);rev+=e;gst+=tax(p)?(S.gstInc?l.total-e:l.total*S.gstRate/100):0}})});return{q,rev,gst,days,profit:rev-q*p.cost}}
+function daysBetween(a,b){return Math.max(1,Math.round((new Date(b)-new Date(a))/864e5)+1)}
+
+function render(){
+ const G={'Overview':['Dashboard'],'Inventory':['Products','Stock Checker','Deliveries','Stocktake','Reorder Planner'],'Sales':['Import Sales','Sales Stats'],'Setup':['Settings']};
+ $('#nav').innerHTML=Object.entries(G).map(([g,ts])=>`<div class="grp"><small>${g}</small>${ts.map(t=>`<button class="${t==tab?'on':''}" onclick="tab='${t}';msg='';render()">${t}</button>`).join(' ')}</div>`).join('');
+ ({'Dashboard':vDash,'Stock Checker':vCheck,'Stocktake':vStock,'Products':vProducts,'Import Sales':vImport,'Deliveries':vDeliv,'Reorder Planner':vReorder,'Sales Stats':vStats,'Settings':vBackup})[tab]();
+}
+function vProducts(){const pb=pendingBC;pendingBC='';
+ let rev=0,pr=0,val=0;S.products.forEach(p=>{const s=stats(p);rev+=s.rev;pr+=s.profit;val+=p.stock*p.cost});
+ $('#v').innerHTML=`<div class="kpi"><div><b>${S.products.length}</b><span>Products</span></div><div><b>${$$(rev)}</b><span>Revenue (ex GST)</span></div><div><b>${$$(pr)}</b><span>Gross profit</span></div><div><b>${rev?(pr/rev*100).toFixed(1):0}%</b><span>Gross margin</span></div><div><b>${$$(val)}</b><span>Stock value at cost</span></div></div><br>
+ <div class="card"><h2>Add product</h2><div class="row">
+ <label>Product code<input id="c"></label><label>Product name<input id="n"></label><label>Product group<input id="pg" list="gl"></label><datalist id="gl">${[...new Set(S.products.map(p=>p.group).filter(Boolean))].map(g=>`<option value="${esc(g)}">`).join('')}</datalist><label>Barcode<input id="bc" value="${esc(pb)}"></label><button onclick="openScan(c=>{$('#bc').value=c;const i=findBC(c);$('#pm').textContent=i>=0?'Already exists: '+S.products[i].name:'Barcode captured.'})">📷 Scan</button><label>Min stock (alert level)<input id="mn" type="number" value="0"></label>
+ <label>Cost price (wholesale, ex-GST)<input id="co" type="number" step="0.01"></label>
+ <label>Selling price (RRP, ${S.gstInc?'inc':'ex'} GST)<input id="pr" type="number" step="0.01"></label>
+ <label>Opening stock (units)<input id="st" type="number" value="0"></label><label>GST applies<input id="g" type="checkbox" checked></label>
+ <button class="p" onclick="addP()">Add</button></div><div class="mu" id="pm">${esc(pb?'Barcode '+pb+' captured. Fill in the rest and click Add.':msg)}</div></div>
+ <div class="card w"><h2>Products</h2><table><tr><th>Code</th><th>Name</th><th>Group</th><th>Barcode</th><th class="n">Cost price</th><th class="n">Selling price</th><th class="n">Price ex GST</th><th>GST</th><th class="n">Gross profit/unit</th><th class="n">Gross margin</th><th class="n">Markup</th><th class="n">Units sold</th><th class="n">Gross profit</th><th class="n">Min stock</th><th class="n">On hand</th><th></th></tr>
+ ${S.products.map((p,i)=>{const s=stats(p);return`<tr><td>${esc(p.code)}</td><td>${esc(p.name)}</td><td><input class="t" list="gl" value="${esc(p.group||'')}" onchange="S.products[${i}].group=this.value.trim();save();vProducts()"></td><td><input class="t" value="${esc(p.barcode||'')}" onchange="S.products[${i}].barcode=this.value.trim();save()"> <button onclick="openScan(c=>{S.products[${i}].barcode=c;save();vProducts()})">📷</button></td>
+ <td class="n"><input type="number" step="0.01" value="${p.cost}" onchange="upd(${i},'cost',this.value)"></td>
+ <td class="n"><input type="number" step="0.01" value="${p.price}" onchange="upd(${i},'price',this.value)"></td>
+ <td class="n">${$$(sellEx(p))}</td><td><input type="checkbox" ${tax(p)?'checked':''} onchange="S.products[${i}].gst=this.checked;save();vProducts()"></td><td class="n">${$$(sellEx(p)-p.cost)}</td><td class="n ${gm(p)<0?'bad':''}">${gm(p).toFixed(1)}%</td><td class="n">${mk(p).toFixed(1)}%</td>
+ <td class="n">${s.q}</td><td class="n">${$$(s.profit)}</td>
+ <td class="n"><input type="number" value="${p.min||0}" onchange="upd(${i},'min',this.value)"></td><td class="n ${p.stock<=0?'bad':''}">${p.stock}</td><td><button onclick="delP(${i})">✕</button></td></tr>`}).join('')||'<tr><td colspan="16" class="mu">No products yet — add one above or import a sales report.</td></tr>'}</table></div>`}
+function addP(){const code=$('#c').value.trim(),name=$('#n').value.trim(),bc=$('#bc').value.trim();if(!name&&!code){msg='Enter a name or code.';return vProducts()}
+ if(find(code,name)){msg='That product already exists.';return vProducts()}
+ if(bc&&findBC(bc)>=0){msg='That barcode already belongs to '+S.products[findBC(bc)].name+'.';return vProducts()}
+ S.products.push({code,name:name||code,cost:num($('#co').value),price:num($('#pr').value),stock:num($('#st').value),gst:$('#g').checked,group:$('#pg').value.trim(),min:num($('#mn').value),barcode:bc});save();msg='Added.';vProducts()}
+function upd(i,f,v){S.products[i][f]=num(v);save();vProducts()}
+function delP(i){if(confirm('Delete '+S.products[i].name+'?')){S.products.splice(i,1);save();vProducts()}}
+
+function vImport(){
+ const t=new Date().toISOString().slice(0,10);
+ $('#v').innerHTML=`<div class="card"><h2>Import sales report (CSV)</h2>
+ <p class="mu">Expected headers: Product Name, Quantity, Price Level, Price, Line Item Total, Product Code, Product Group and Barcode (both optional). Stock is reduced by the quantities sold. Unknown products are added automatically with a cost price of $0 — update these afterwards so margins are correct.</p>
+ <div class="row"><label>Report start date<input type="date" id="f" value="${t}"></label><label>Report end date<input type="date" id="e" value="${t}"></label>
+ <label>CSV file<input type="file" id="file" accept=".csv,text/csv"></label><button class="p" onclick="doImport()">Import</button></div>
+ <div id="im" class="mu">${esc(msg)}</div></div>
+ <div class="card w"><h2>Import history</h2><table><tr><th>Period</th><th>File</th><th class="n">Lines</th><th class="n">Revenue</th><th></th></tr>
+ ${S.imports.map((im,i)=>`<tr><td>${im.from} → ${im.to}</td><td>${esc(im.file)}</td><td class="n">${im.lines.length}</td><td class="n">${$$(im.lines.reduce((a,l)=>a+l.total,0))}</td><td><button onclick="delI(${i})">Undo</button></td></tr>`).join('')||'<tr><td colspan="5" class="mu">None yet.</td></tr>'}</table></div>`}
+function doImport(){const f=$('#file').files[0],from=$('#f').value,to=$('#e').value;
+ if(!f||!from||!to||to<from){msg='Choose a file and a valid date range.';return vImport()}
+ if(S.imports.some(x=>x.from<=to&&x.to>=from)&&!confirm('These dates overlap an existing import. Continue?'))return;
+ f.text().then(tx=>{const r=parseCSV(tx),h=r[0].map(x=>x.trim().toLowerCase());
+  const ix=n=>h.findIndex(x=>x.replace(/[^a-z]/g,'')===n);
+  const iN=ix('productname'),iQ=ix('quantity'),iT=ix('lineitemtotal'),iC=ix('productcode'),iP=ix('price'),iL=ix('pricelevel'),iG=ix('productgroup')<0?ix('group'):ix('productgroup'),iB=ix('barcode');
+  if(iN<0||iQ<0||iT<0){msg='Could not find Product Name / Quantity / Line Item Total headers.';return vImport()}
+  const agg={},created=[];
+  r.slice(1).forEach(x=>{const name=(x[iN]||'').trim(),code=iC>=0?(x[iC]||'').trim():'';if(!name&&!code)return;
+   const grp=iG>=0?(x[iG]||'').trim():'',bcv=iB>=0?(x[iB]||'').trim():'';let p=find(code,name);if(!p){p={code,name:name||code,cost:0,price:iP>=0?num(x[iP]):0,stock:0,group:grp,barcode:bcv};S.products.push(p);created.push(p.name)}if(grp&&!p.group)p.group=grp;if(bcv&&!p.barcode)p.barcode=bcv;
+   const k=key(p),lvl=(iL>=0&&(x[iL]||'').trim())||'Standard',ak=k+'|'+lvl;agg[ak]=agg[ak]||{k,lvl,qty:0,total:0};agg[ak].qty+=num(x[iQ]);agg[ak].total+=num(x[iT])});
+  const lines=Object.values(agg);lines.forEach(l=>{const p=S.products.find(p=>key(p)===l.k);p.stock-=l.qty});
+  S.imports.push({id:Date.now(),from,to,days:daysBetween(from,to),file:f.name,lines});save();
+  msg=`Imported ${lines.length} products. ${created.length?created.length+' new product(s) added — set their cost prices.':''}`;vImport()})}
+function delI(i){if(!confirm('Remove this import and return the stock?'))return;
+ S.imports[i].lines.forEach(l=>{const p=S.products.find(p=>key(p)===l.k);if(p)p.stock+=l.qty});S.imports.splice(i,1);save();vImport()}
+
+function vDeliv(){
+ $('#v').innerHTML=`<div class="card"><h2>Record delivery</h2><div class="row">
+ <label>Product<select id="dp">${S.products.map((p,i)=>`<option value="${i}">${esc(p.name)}${p.code?' ('+esc(p.code)+')':''}</option>`).join('')}</select></label>
+ <label>Units received<input id="dq" type="number" min="0"></label><label>Date<input id="dd" type="date" value="${new Date().toISOString().slice(0,10)}"></label>
+ <button class="p" onclick="addD()">Add to stock</button></div><div class="mu">${esc(msg)}</div></div>
+ <div class="card w"><h2>Recent deliveries</h2><table><tr><th>Date</th><th>Product</th><th class="n">Units</th><th class="n">Cost (ex GST)</th><th class="n">GST paid</th></tr>
+ ${S.deliveries.slice(-30).reverse().map(d=>`<tr><td>${d.date}</td><td>${esc(d.name)}</td><td class="n">${d.qty}</td><td class="n">${$$(d.qty*(d.cost||0))}</td><td class="n">${$$(d.gst||0)}</td></tr>`).join('')||'<tr><td colspan="5" class="mu">None yet.</td></tr>'}</table></div>`}
+function addD(){const p=S.products[$('#dp').value],q=num($('#dq').value);if(!p||q<=0){msg='Pick a product and quantity.';return vDeliv()}
+ p.stock+=q;S.deliveries.push({date:$('#dd').value,name:p.name,qty:q,cost:p.cost,gst:tax(p)?q*p.cost*S.gstRate/100:0});save();msg=`Added ${q} × ${p.name}.`;vDeliv()}
+
+function vReorder(){
+ const days=S.freq,rows=S.products.map(p=>{const s=stats(p),rate=s.days?s.q/s.days:0,need=rate*days*(1+S.buffer/100),ord=Math.max(0,Math.ceil(need-p.stock));
+  return{p,rate,left:rate?p.stock/rate:Infinity,ord,cost:ord*p.cost}}).sort((a,b)=>b.ord-a.ord);
+ $('#v').innerHTML=`<div class="card"><h2>Order settings</h2><div class="row">
+ <label>Order frequency<select onchange="S.freq=+this.value;save();vReorder()"><option value="7" ${days==7?'selected':''}>Weekly</option><option value="14" ${days==14?'selected':''}>Fortnightly</option><option value="30" ${days==30?'selected':''}>Monthly</option></select></label>
+ <label>Safety stock buffer %<input type="number" value="${S.buffer}" onchange="S.buffer=num(this.value);save();vReorder()"></label></div>
+ <p class="mu">Suggested order = average daily units sold × days in cycle × (1 + buffer) − stock on hand. Averages come from your imported reports (${S.imports.reduce((a,x)=>a+x.days,0)} days of data).</p></div>
+ <div class="card w"><table><tr><th>Product</th><th class="n">Avg units/day</th><th class="n">On hand</th><th class="n">Days of stock left</th><th class="n">Suggested order</th><th class="n">Est. cost (ex GST)</th></tr>
+ ${rows.map(r=>`<tr><td>${esc(r.p.name)}</td><td class="n">${r.rate.toFixed(2)}</td><td class="n">${r.p.stock}</td><td class="n ${r.left<days?'bad':''}">${r.left===Infinity?'–':r.left.toFixed(1)}</td><td class="n"><b>${r.ord}</b></td><td class="n">${$$(r.cost)}</td></tr>`).join('')||'<tr><td colspan="6" class="mu">No products.</td></tr>'}
+ <tr><td colspan="5" class="n"><b>Total estimated order</b></td><td class="n"><b>${$$(rows.reduce((a,r)=>a+r.cost,0))}</b></td></tr></table></div>`}
+
+function vStats(){
+ const ims=[...S.imports].sort((a,b)=>a.from<b.from?-1:1),pc=k=>S.products.find(p=>key(p)===k)||{cost:0,price:0},lv={},gr={};
+ const per=ims.map(im=>{let rev=0,pr=0;im.lines.forEach(l=>{const p=pc(l.k),L=l.lvl||'Standard',o=lv[L]=lv[L]||{q:0,rev:0,pr:0,disc:0};
+  const e=ex(l.total,p);rev+=e;pr+=e-l.qty*p.cost;o.q+=l.qty;o.rev+=e;o.pr+=e-l.qty*p.cost;if(p.price>0)o.disc+=Math.max(0,l.qty*sellEx(p)-e);const G=p.group||'Ungrouped',go=gr[G]=gr[G]||{q:0,rev:0,pr:0};go.q+=l.qty;go.rev+=e;go.pr+=e-l.qty*p.cost});return{im,rev,pr}});
+ const rev=per.reduce((a,x)=>a+x.rev,0),pr=per.reduce((a,x)=>a+x.pr,0),disc=Object.values(lv).reduce((a,o)=>a+o.disc,0),hp=Object.entries(lv).filter(([k])=>/healthy/i.test(k)).reduce((a,[k,o])=>a+o.rev,0);
+ const gc=S.products.reduce((a,p)=>a+stats(p).gst,0),gp=S.deliveries.reduce((a,d)=>a+(d.gst||0),0);
+ const nocost=S.products.filter(p=>!p.cost).length,mx=Math.max(1,...per.map(x=>x.rev));
+ const bw=Math.min(60,600/Math.max(1,per.length)/2.4);
+ const svg=per.length?`<svg viewBox="0 0 700 230" style="width:100%;max-width:700px">${per.map((x,i)=>{const cx=50+(i+.5)*(640/per.length),h1=x.rev/mx*170,h2=Math.max(0,x.pr)/mx*170;
+  return`<rect x="${cx-bw}" y="${190-h1}" width="${bw}" height="${h1}" fill="var(--ac)"/><rect x="${cx}" y="${190-h2}" width="${bw}" height="${h2}" fill="var(--ok)"/><text x="${cx}" y="208" font-size="10" text-anchor="middle" fill="var(--mu)">${x.im.from.slice(5)}</text>`}).join('')}
+  <line x1="45" y1="190" x2="695" y2="190" stroke="var(--bd)"/><text x="42" y="24" font-size="10" text-anchor="end" fill="var(--mu)">${$$(mx).slice(0,-3)}</text>
+  <rect x="50" y="218" width="9" height="9" fill="var(--ac)"/><text x="63" y="226" font-size="10" fill="var(--mu)">Revenue</text><rect x="120" y="218" width="9" height="9" fill="var(--ok)"/><text x="133" y="226" font-size="10" fill="var(--mu)">Gross profit</text></svg>`:'<p class="mu">Import a sales report to see charts.</p>';
+ const tp=S.products.map(p=>({p,...stats(p)})).filter(x=>x.rev).sort((a,b)=>b.profit-a.profit),tm=Math.max(1,...tp.map(x=>x.profit));
+ $('#v').innerHTML=`<div class="kpi"><div><b>${$$(rev)}</b><span>Revenue (ex GST)</span></div><div><b>${$$(pr)}</b><span>Gross profit</span></div><div><b>${rev?(pr/rev*100).toFixed(1):0}%</b><span>Gross margin</span></div><div><b>${$$(disc)}</b><span>Discounts given vs selling price</span></div><div><b>${rev?(hp/rev*100).toFixed(1):0}%</b><span>Revenue at Healthy Pets Club</span></div></div><br>
+ ${nocost?`<div class="card bad">${nocost} product(s) have no cost price, so profit and margin are overstated.</div>`:''}
+ <div class="card"><h2>GST summary</h2><div class="kpi"><div><b>${$$(gc)}</b><span>GST collected on sales</span></div><div><b>${$$(gp)}</b><span>GST paid on recorded deliveries</span></div><div><b>${$$(gc-gp)}</b><span>Estimated net GST</span></div></div><p class="mu">Estimate only, based on imported sales and deliveries recorded here. Confirm figures with your BAS / accountant.</p></div>
+ <div class="card"><h2>Revenue &amp; gross profit by report period</h2>${svg}</div>
+ <div class="card w"><h2>By product group</h2><table><tr><th>Group</th><th class="n">Units</th><th class="n">Revenue (ex GST)</th><th class="n">Gross profit</th><th class="n">Gross margin</th><th class="n">% of profit</th></tr>
+ ${Object.entries(gr).sort((a,b)=>b[1].pr-a[1].pr).map(([k,o])=>`<tr><td>${esc(k)}</td><td class="n">${o.q}</td><td class="n">${$$(o.rev)}</td><td class="n">${$$(o.pr)}</td><td class="n">${o.rev?(o.pr/o.rev*100).toFixed(1):0}%</td><td class="n">${pr?(o.pr/pr*100).toFixed(1):0}%</td></tr>`).join('')||'<tr><td colspan="6" class="mu">No data.</td></tr>'}</table></div>
+ <div class="card w"><h2>By price level</h2><table><tr><th>Price level</th><th class="n">Units</th><th class="n">Revenue</th><th class="n">Gross profit</th><th class="n">Gross margin</th><th class="n">Discount given</th></tr>
+ ${Object.entries(lv).map(([k,o])=>`<tr><td>${esc(k)}</td><td class="n">${o.q}</td><td class="n">${$$(o.rev)}</td><td class="n">${$$(o.pr)}</td><td class="n">${o.rev?(o.pr/o.rev*100).toFixed(1):0}%</td><td class="n">${$$(o.disc)}</td></tr>`).join('')||'<tr><td colspan="6" class="mu">No data.</td></tr>'}</table>
+ <p class="mu">Discount given = units × current selling price − amount charged.</p></div>
+ <div class="card w"><h2>Top products by gross profit</h2><table><tr><th>Product</th><th class="n">Units</th><th class="n">Revenue</th><th class="n">Gross profit</th><th class="n">Margin</th><th style="width:30%"></th></tr>
+ ${tp.slice(0,10).map(x=>`<tr><td>${esc(x.p.name)}</td><td class="n">${x.q}</td><td class="n">${$$(x.rev)}</td><td class="n">${$$(x.profit)}</td><td class="n">${(x.profit/x.rev*100).toFixed(1)}%</td><td><div style="background:var(--ok);height:10px;width:${Math.max(0,x.profit)/tm*100}%"></div></td></tr>`).join('')}</table></div>
+ <div class="card w"><h2>Lowest margin products</h2><table><tr><th>Product</th><th class="n">Revenue</th><th class="n">Realised margin</th></tr>
+ ${[...tp].sort((a,b)=>a.profit/a.rev-b.profit/b.rev).slice(0,5).map(x=>`<tr><td>${esc(x.p.name)}</td><td class="n">${$$(x.rev)}</td><td class="n">${(x.profit/x.rev*100).toFixed(1)}%</td></tr>`).join('')}</table></div>`}
+let counts={},reasons={},stf='',pendingBC='',stMode='add',stLast=-1,stUnknown='';
+const RS=['Stocktake correction','Damaged','Expired','Theft / loss','Returned to supplier','Other'];
+function alerts(){return S.products.map(p=>{const s=stats(p),rate=s.days?s.q/s.days:0,left=rate?p.stock/rate:Infinity,ord=Math.max(0,Math.ceil(rate*S.freq*(1+S.buffer/100)-p.stock));let r='';
+ if(p.stock<=0)r='Out of stock';else if(p.min>0&&p.stock<=p.min)r='At/below minimum';else if(left<7)r='Under 7 days left';return{p,left,ord,r}})}
+function vDash(){
+ const al=alerts(),low=al.filter(a=>a.r).sort((a,b)=>a.p.stock-b.p.stock),out=low.filter(a=>a.p.stock<=0).length,last=[...S.imports].sort((a,b)=>a.to<b.to?-1:1).pop();
+ let lr=0,lp=0;if(last)last.lines.forEach(l=>{const p=S.products.find(p=>key(p)===l.k)||{cost:0},e=ex(l.total,p);lr+=e;lp+=e-l.qty*p.cost});
+ const since=new Date(Date.now()-30*864e5).toISOString().slice(0,10),wo=S.adjust.filter(a=>a.date>=since&&a.value<0).reduce((a,x)=>a+x.value,0),oc=al.reduce((a,x)=>a+x.ord*x.p.cost,0),val=S.products.reduce((a,p)=>a+Math.max(0,p.stock)*p.cost,0),nocost=S.products.filter(p=>!p.cost).length;
+ $('#v').innerHTML=`<div class="kpi"><div><b>${$$(lr)}</b><span>${last?'Latest report revenue ex GST ('+last.from+' → '+last.to+')':'No sales imported yet'}</span></div><div><b>${$$(lp)}</b><span>Gross profit${lr?' · '+(lp/lr*100).toFixed(1)+'% margin':''}</span></div><div><b class="${out?'bad':''}">${out}</b><span>Out of stock</span></div><div><b class="${low.length?'bad':''}">${low.length}</b><span>Low stock alerts</span></div><div><b>${$$(oc)}</b><span>Suggested ${S.freq==7?'weekly':S.freq==14?'fortnightly':'monthly'} order (ex GST)</span></div><div><b>${$$(val)}</b><span>Stock value at cost</span></div><div><b>${$$(-wo)}</b><span>Write-offs, last 30 days</span></div></div><br>
+ ${nocost?`<div class="card bad">${nocost} product(s) have no cost price, so profit figures are overstated.</div>`:''}
+ <div class="card w"><h2>Low stock alerts</h2><p class="mu">Flagged when out of stock, at or below the product's minimum stock, or under 7 days of stock at the recent sales rate.</p><table><tr><th>Product</th><th>Group</th><th>Alert</th><th class="n">On hand</th><th class="n">Min</th><th class="n">Days left</th><th class="n">Suggested order</th></tr>
+ ${low.slice(0,20).map(a=>`<tr><td>${esc(a.p.name)}</td><td>${esc(a.p.group||'')}</td><td class="${a.p.stock<=0?'bad':''}">${a.r}</td><td class="n">${a.p.stock}</td><td class="n">${a.p.min||0}</td><td class="n">${a.left===Infinity?'–':a.left.toFixed(1)}</td><td class="n"><b>${a.ord}</b></td></tr>`).join('')||'<tr><td colspan="7" class="ok">Nothing needs attention.</td></tr>'}</table>
+ ${low.length>20?`<p class="mu">…and ${low.length-20} more. See the Reorder Planner.</p>`:''}</div>`}
+function cnt(i,v){counts[i]=v;const p=S.products[i],e=$('#v'+i);if(!e)return;if(v===''){e.textContent='';e.className='n';return}const d=num(v)-p.stock;e.textContent=(d>0?'+':'')+d;e.className='n '+(d<0?'bad':d>0?'ok':'')}
+function applyST(){let n=0,val=0;const date=new Date().toISOString().slice(0,10);
+ Object.entries(counts).forEach(([i,v])=>{if(v===''||v==null)return;const p=S.products[i],c=num(v),d=c-p.stock;if(d){S.adjust.push({date,name:p.name,sys:p.stock,counted:c,diff:d,reason:reasons[i]||RS[0],value:d*p.cost});p.stock=c;n++;val+=d*p.cost}});
+ counts={};reasons={};save();msg=n?`Applied ${n} adjustment(s), net value ${$$(val)} at cost.`:'No differences to apply.';vStock()}
+function vStock(){
+ const gs=[...new Set(S.products.map(p=>p.group||'Ungrouped'))].sort(),list=S.products.map((p,i)=>({p,i})).filter(x=>!stf||(x.p.group||'Ungrouped')===stf);
+ $('#v').innerHTML=`<div class="card"><h2>Stocktake</h2><p class="mu">Enter the physical count for each product (leave blank to skip), then apply. Differences are logged with a reason. Filter by group to count one section at a time.</p>
+ <div class="row"><label>Product group<select onchange="stf=this.value;vStock()"><option value="">All</option>${gs.map(g=>`<option ${g==stf?'selected':''}>${esc(g)}</option>`).join('')}</select></label><button class="p" onclick="applyST()">Apply counts</button></div><div class="mu">${esc(msg)}</div></div>
+ <div class="card"><h2>Scan</h2><div class="row"><button class="p" onclick="openScan(stScan,true)">📷 Scan with camera</button>
+ <label>Scanner or typed barcode (press Enter)<input id="scin" inputmode="numeric" onkeydown="if(event.key=='Enter')stScan(this.value)"></label>
+ <label>On each scan<select onchange="stMode=this.value"><option value="add" ${stMode=='add'?'selected':''}>Add 1 to count</option><option value="type" ${stMode=='type'?'selected':''}>Jump to product, I type the count</option></select></label></div>
+ ${stUnknown?`<p class="bad">Barcode ${esc(stUnknown)} was not found. <button onclick="pendingBC='${stUnknown}';tab='Products';render()">Add as new product</button></p>`:''}
+ <p class="mu">Products are matched on their Barcode, or on Product Code if no barcode is stored. Bluetooth/USB scanners type into the box above.</p></div>
+ <div class="card w"><table><tr><th>Product</th><th>Group</th><th class="n">System stock</th><th>Counted</th><th class="n">Variance</th><th>Reason</th></tr>
+ ${list.map(({p,i})=>`<tr id="r${i}" style="${i===stLast?'background:rgba(47,111,237,.15)':''}"><td>${esc(p.name)}</td><td>${esc(p.group||'')}</td><td class="n">${p.stock}</td><td><input id="ci${i}" type="number" value="${counts[i]??''}" oninput="cnt(${i},this.value)"></td><td class="n" id="v${i}"></td><td><select onchange="reasons[${i}]=this.value">${RS.map(r=>`<option ${reasons[i]==r?'selected':''}>${r}</option>`).join('')}</select></td></tr>`).join('')||'<tr><td colspan="6" class="mu">No products.</td></tr>'}</table></div>
+ <div class="card w"><h2>Adjustment log</h2><table><tr><th>Date</th><th>Product</th><th class="n">System</th><th class="n">Counted</th><th class="n">Change</th><th>Reason</th><th class="n">Value at cost</th></tr>
+ ${S.adjust.slice(-30).reverse().map(a=>`<tr><td>${a.date}</td><td>${esc(a.name)}</td><td class="n">${a.sys}</td><td class="n">${a.counted}</td><td class="n ${a.diff<0?'bad':'ok'}">${a.diff>0?'+':''}${a.diff}</td><td>${esc(a.reason)}</td><td class="n">${$$(a.value)}</td></tr>`).join('')||'<tr><td colspan="7" class="mu">No adjustments yet.</td></tr>'}</table></div>`;
+ Object.keys(counts).forEach(i=>cnt(i,counts[i]));
+ if(stLast>=0){const r=$('#r'+stLast);if(r)r.scrollIntoView({block:'center'});if(stMode=='type'){const c=$('#ci'+stLast);if(c)c.focus()}}
+ if(stMode=='add'&&!scn){const si=$('#scin');if(si&&stLast>=0)si.focus()}}
+const nb2=c=>{const t=String(c||'').trim();return /^\d+$/.test(t)?t.replace(/^0+/,''):t.toLowerCase()};
+function findBC(c){return S.products.findIndex(p=>[p.barcode,p.code].some(v=>v&&nb2(v)===nb2(c)))}
+function stScan(c){c=String(c).trim();if(!c)return;const i=findBC(c);
+ if(i<0){stUnknown=c.replace(/[^\w-]/g,'');stLast=-1;msg='Barcode '+c+' not found.';vStock();return msg}
+ stUnknown='';const p=S.products[i];if(stf&&(p.group||'Ungrouped')!==stf)stf='';stLast=i;
+ if(stMode=='add')counts[i]=String(num(counts[i])+1);
+ msg=p.name+(stMode=='add'?': counted '+counts[i]:': enter the count')+' (system '+p.stock+')';vStock();return msg}
+let scn=null;
+async function openScan(cb,keep){closeScan();
+ const o=document.createElement('div');o.id='scn';o.style.cssText='position:fixed;left:0;right:0;bottom:0;background:#000d;color:#fff;z-index:9;padding:10px;display:flex;flex-direction:column;align-items:center;gap:8px;padding-bottom:calc(10px + env(safe-area-inset-bottom,0px))';
+ o.innerHTML=`<div id="scv" style="width:100%;max-width:360px"></div><div id="scs" style="text-align:center">Starting camera…</div><div class="row"><input id="scm" placeholder="Type barcode" inputmode="numeric" onkeydown="if(event.key=='Enter')scanManual()"><button onclick="scanManual()">Use</button><button onclick="closeScan()">Close</button></div>`;
+ document.body.appendChild(o);const me=scn={cb,keep,last:'',t:0,stop:false,stream:null,h5:null},st=$('#scs');
+ try{
+  if('BarcodeDetector' in window){
+   const det=new BarcodeDetector({formats:['ean_13','ean_8','upc_a','upc_e','code_128','code_39','itf']});
+   const v=document.createElement('video');v.setAttribute('playsinline','');v.muted=true;v.style.cssText='width:100%;max-height:30vh';$('#scv').appendChild(v);
+   const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+   if(me.stop){stream.getTracks().forEach(t=>t.stop());return}
+   me.stream=stream;v.srcObject=stream;await v.play();st.textContent='Point at a barcode';
+   while(!me.stop){try{const r=await det.detect(v);if(r.length)gotCode(r[0].rawValue)}catch(e){}await new Promise(r=>setTimeout(r,200))}
+  }else{
+   await new Promise((res,rej)=>{if(window.Html5Qrcode)return res();const sc=document.createElement('script');sc.src='https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js';sc.onload=res;sc.onerror=rej;document.head.appendChild(sc)});
+   if(me.stop)return;me.h5=new Html5Qrcode('scv');await me.h5.start({facingMode:'environment'},{fps:10,qrbox:{width:260,height:140}},t=>gotCode(t),()=>{});st.textContent='Point at a barcode';
+  }
+ }catch(e){const x=$('#scs');if(x)x.textContent='Camera unavailable here ('+((e&&e.name)||'error')+'). Type the number below, use a Bluetooth scanner, or open the saved file on your phone.'}
+}
+function gotCode(c){if(!scn||scn.stop)return;const now=Date.now();if(c===scn.last&&now-scn.t<2000)return;scn.last=c;scn.t=now;
+ if(navigator.vibrate)navigator.vibrate(60);const cb=scn.cb,keep=scn.keep;if(!keep)closeScan();const r=cb(c);if(keep&&scn){const x=$('#scs');if(x)x.textContent=r||('Scanned '+c)}}
+function scanManual(){const e=$('#scm'),v=e.value.trim();if(v&&scn){e.value='';scn.last='';gotCode(v)}}
+function closeScan(){const s=scn;scn=null;if(s){s.stop=true;if(s.stream)s.stream.getTracks().forEach(t=>t.stop());if(s.h5)s.h5.stop().catch(()=>{})}const o=$('#scn');if(o)o.remove()}
+let ckLast=-1,ckHist=[];
+function ckScan(c){c=String(c).trim();if(!c)return;const i=findBC(c);
+ if(i<0){ckLast=-1;msg='Barcode '+c+' not found.';vCheck();return msg}
+ ckLast=i;ckHist.unshift(i);ckHist=ckHist.filter((v,ix)=>ckHist.indexOf(v)==ix).slice(0,8);msg='';vCheck();return S.products[i].name}
+function vCheck(){
+ const p=ckLast>=0?S.products[ckLast]:null,s=p?stats(p):null,al=p?alerts().find(a=>a.p===p):null;
+ $('#v').innerHTML=`<div class="card"><h2>Barcode stock checker</h2><p class="mu">Scan or type a barcode to see current stock and pricing. Matches on Barcode, or Product Code if no barcode is stored.</p>
+ <div class="row"><button class="p" onclick="openScan(ckScan,true)">📷 Scan with camera</button><input id="ckin" inputmode="numeric" placeholder="Barcode / scanner input" onkeydown="if(event.key=='Enter'){ckScan(this.value);this.value=''}"></div>
+ ${msg?`<p class="bad">${esc(msg)}</p>`:''}</div>
+ ${p?`<div class="card"><div class="kpi">
+ <div><b class="${p.stock<=0?'bad':''}">${p.stock}</b><span>On hand</span></div>
+ <div><b>${p.min||0}</b><span>Min stock</span></div>
+ <div><b>${$$(p.cost)}</b><span>Cost price (ex GST)</span></div>
+ <div><b>${$$(p.price)}</b><span>Selling price</span></div>
+ <div><b>${gm(p).toFixed(1)}%</b><span>Gross margin</span></div>
+ <div><b>${s.q}</b><span>Units sold (all time)</span></div></div><br>
+ <h2 style="margin:0 0 6px">${esc(p.name)}</h2><p class="mu">${esc(p.group||'No group')} · Code ${esc(p.code||'–')} · Barcode ${esc(p.barcode||'–')}</p>
+ ${al?`<p class="bad">⚠ ${al.r} — suggested order ${al.ord}</p>`:'<p class="ok">Stock level OK</p>'}</div>`:'<div class="card mu">Scan a product to see its details.</div>'}
+ ${ckHist.length?`<div class="card w"><h2>Recently checked</h2><table><tr><th>Product</th><th class="n">On hand</th><th class="n">Cost</th><th class="n">Price</th></tr>
+ ${ckHist.map(i=>{const p=S.products[i];return p?`<tr><td><a href="#" onclick="ckLast=${i};vCheck();return false">${esc(p.name)}</a></td><td class="n">${p.stock}</td><td class="n">${$$(p.cost)}</td><td class="n">${$$(p.price)}</td></tr>`:''}).join('')}</table></div>`:''}`;
+ const ci=$('#ckin');if(ci)ci.focus()}
+function vBackup(){
+ $('#v').innerHTML=`<div class="card"><h2>GST</h2><div class="row"><label>GST rate %<input type="number" value="${S.gstRate}" onchange="S.gstRate=num(this.value);save();vBackup()"></label>
+ <label>Sales reports &amp; selling prices are<select onchange="S.gstInc=this.value=='1';save();vBackup()"><option value="1" ${S.gstInc?'selected':''}>GST inclusive</option><option value="0" ${S.gstInc?'':'selected'}>GST exclusive</option></select></label></div>
+ <p class="mu">Cost prices are always entered ex-GST. Revenue, profit and margins are calculated ex-GST. Untick GST on the Products tab for GST-free items.</p></div>
+ <div class="card"><h2>Backup &amp; restore</h2><p class="mu">Data lives in this browser only. Download a backup regularly.</p>
+ <div class="row"><button class="p" onclick="bk()">Download backup</button><label>Restore<input type="file" accept=".json" onchange="rs(this)"></label></div><div class="mu">${esc(msg)}</div></div>`}
+function bk(){const a=document.createElement('a');a.href='data:application/json,'+encodeURIComponent(JSON.stringify(S));a.download='sales-tracker-backup.json';a.click()}
+function rs(el){el.files[0].text().then(t=>{try{S=Object.assign(S,JSON.parse(t));save();msg='Restored.'}catch(e){msg='Invalid file.'}vBackup()})}
+render();
+if('serviceWorker' in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}))}
+</script></main></body></html>
